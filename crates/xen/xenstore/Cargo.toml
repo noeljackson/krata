@@ -1,30 +1,16 @@
 [package]
 name = "krata-xenstore"
-description = "A client that interacts with xenstore for krata"
-license.workspace = true
-version.workspace = true
-homepage.workspace = true
-repository.workspace = true
+version = "0.0.24"
 edition = "2021"
-resolver = "2"
-
-[dependencies]
-byteorder = { workspace = true }
-libc = { workspace = true }
-log = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
+description = "A client that interacts with xenstore for krata"
+license = "GPL-2.0-or-later"
 
 [lib]
 name = "xenstore"
 
-[dev-dependencies]
-env_logger = { workspace = true }
-
-[[example]]
-name = "xenstore-ls"
-path = "examples/list.rs"
-
-[[example]]
-name = "xenstore-watch"
-path = "examples/watch.rs"
+[dependencies]
+byteorder = "1"
+libc = "0.2"
+log = "0.4.22"
+thiserror = "2.0.9"
+tokio = { version = "1.41.1", features = ["full"] }
