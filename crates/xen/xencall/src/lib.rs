@@ -1066,37 +1066,6 @@ impl XenCall {
         Ok(topos)
     }
 
-    /// Enumerate Xen domains starting from `first_domid`.
-    ///
-    /// Uses XEN_SYSCTL_getdomaininfolist which correctly enumerates domains
-    /// on all Xen versions (unlike XEN_DOMCTL_GETDOMAININFO which does
-    /// exact domid lookup on Xen 4.17+).
-    pub async fn get_domain_info_list(
-        &self,
-        first_domid: u16,
-        max_domains: u32,
-    ) -> Result<Vec<GetDomainInfo>> {
-        let mut buffer = vec![GetDomainInfo::default(); max_domains as usize];
-        let mut sysctl = Sysctl {
-            cmd: XEN_SYSCTL_GETDOMAININFOLIST,
-            interface_version: self.sysctl_interface_version,
-            value: SysctlValue {
-                getdomaininfolist: SysctlGetdomaininfolist {
-                    first_domain: first_domid,
-                    pad: 0,
-                    max_domains,
-                    buffer: buffer.as_mut_ptr() as u64,
-                    num_domains: 0,
-                },
-            },
-        };
-        self.hypercall1(HYPERVISOR_SYSCTL, addr_of_mut!(sysctl) as c_ulong)
-            .await?;
-        let count = unsafe { sysctl.value.getdomaininfolist.num_domains } as usize;
-        buffer.truncate(count);
-        Ok(buffer)
-    }
-
     pub async fn phys_info(&self) -> Result<SysctlPhysinfo> {
         let mut sysctl = Sysctl {
             cmd: XEN_SYSCTL_PHYSINFO,
