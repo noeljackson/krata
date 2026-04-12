@@ -177,10 +177,13 @@ impl ElfImageLoader {
             .get(&XEN_ELFNOTE_ENTRY)
             .ok_or(Error::ElfXenNoteMissing("ENTRY"))?
             .value;
+        // Modern kernels (6.x+) no longer emit HYPERCALL_PAGE — they use
+        // vmmcall/vmcall instructions directly.  Default to u64::MAX which
+        // causes setup_hypercall_page() to skip the legacy page mapping.
         let virt_hypercall = xen_notes
             .get(&XEN_ELFNOTE_HYPERCALL_PAGE)
-            .ok_or(Error::ElfXenNoteMissing("HYPERCALL_PAGE"))?
-            .value;
+            .map(|n| n.value)
+            .unwrap_or(u64::MAX);
         let init_p2m = xen_notes
             .get(&XEN_ELFNOTE_INIT_P2M)
             .ok_or(Error::ElfXenNoteMissing("INIT_P2M"))?

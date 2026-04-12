@@ -131,6 +131,16 @@ pub struct GrantEntry {
     pub frame: u32,
 }
 
+/// Grant table v2 entry (16 bytes). Used when Xen is configured with gnttab=max-ver:2.
+#[repr(C)]
+pub struct GrantEntryV2 {
+    pub hdr: u16,
+    pub _pad: u16,
+    pub domid: u16,
+    pub pad0: u16,
+    pub frame: u64,
+}
+
 pub const XEN_HVM_START_MAGIC_VALUE: u32 = 0x336ec578;
 
 pub const HVM_PARAM_STORE_PFN: u32 = 1;

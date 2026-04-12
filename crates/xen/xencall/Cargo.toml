@@ -1,42 +1,16 @@
 [package]
 name = "krata-xencall"
-description = "An implementation of direct interfacing to Xen privcmd for krata"
-license.workspace = true
-version.workspace = true
-homepage.workspace = true
-repository.workspace = true
+version = "0.0.24"
 edition = "2021"
-resolver = "2"
-
-[dependencies]
-libc = { workspace = true }
-log = { workspace = true }
-nix = { workspace = true, features = ["ioctl"] }
-thiserror = { workspace = true }
-tokio = { workspace = true }
+description = "An implementation of direct interfacing to Xen privcmd for krata"
+license = "GPL-2.0-or-later"
 
 [lib]
 name = "xencall"
 
-[dev-dependencies]
-env_logger = { workspace = true }
-
-[[example]]
-name = "xencall-cpu-topology"
-path = "examples/cpu_topology.rs"
-
-[[example]]
-name = "xencall-domain-info"
-path = "examples/domain_info.rs"
-
-[[example]]
-name = "xencall-domain-create"
-path = "examples/domain_create.rs"
-
-[[example]]
-name = "xencall-version-capabilities"
-path = "examples/version_capabilities.rs"
-
-[[example]]
-name = "xencall-power-management"
-path = "examples/power_management.rs"
+[dependencies]
+libc = "0.2"
+log = "0.4.22"
+nix = { version = "0.29.0", features = ["ioctl"] }
+thiserror = "2.0.9"
+tokio = { version = "1.41.1", features = ["full"] }

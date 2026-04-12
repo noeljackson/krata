@@ -695,8 +695,11 @@ impl BootSetupPlatform for X86PvPlatform {
             .call
             .map_resource(domain.domid, 1, 0, 0, 1, addr)
             .await?;
+        // Grant table entries must be v1 format here. All domains start with
+        // gt_version=1 regardless of gnttab=max-ver:2. The guest kernel upgrades
+        // to v2 via GNTTABOP_set_version, and Xen auto-converts reserved entries.
         let entries = unsafe { slice::from_raw_parts_mut(addr as *mut GrantEntry, 2) };
-        entries[0].flags = 1 << 0;
+        entries[0].flags = 1 << 0; // GTF_permit_access
         entries[0].domid = 0;
         entries[0].frame = console_gfn as u32;
         entries[1].flags = 1 << 0;

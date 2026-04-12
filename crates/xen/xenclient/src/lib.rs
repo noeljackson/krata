@@ -5,7 +5,9 @@ use error::{Error, Result};
 use log::{debug, trace};
 use tokio::time::timeout;
 use tx::{DeviceConfig, XenTransaction};
-use xenplatform::domain::{PlatformDomainInfo, PlatformDomainManager};
+use xenplatform::domain::{
+    PlatformDomainInfo, PlatformDomainManager, PlatformRestoreConfig,
+};
 
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -56,6 +58,41 @@ impl XenClient {
                 Err(err)
             }
         }
+    }
+
+    /// Restore a domain from a checkpoint stream into a paused Xen domain.
+    ///
+    /// This only performs the hypervisor-level restore via xc_domain_restore.
+    /// It intentionally does NOT call introduce_domain() or write xenstore
+    /// device state. Restored PV guests must be allowed to complete their
+    /// resume path before xenstored connects to the restored store ring.
+    ///
+    /// The checkpoint_fd must point to a raw xc migration stream. For xl-format
+    /// checkpoint files, the caller must seek past the xl header first.
+    pub async fn restore(
+        &self,
+        config: PlatformRestoreConfig,
+        checkpoint_fd: i32,
+    ) -> Result<PlatformDomainInfo> {
+        self.domain_manager
+            .restore(config, checkpoint_fd)
+            .await
+            .map_err(Error::XenPlatform)
+    }
+
+    /// Initialize xenstore declarations and device state for a restored domain.
+    ///
+    /// Call this only AFTER the restored guest has been unpaused and completed
+    /// its PV resume path. Doing introduce_domain() before first unpause lets
+    /// xenstored consume stale checkpointed store-ring data and can corrupt the
+    /// guest's resume state.
+    pub async fn init_restored(
+        &self,
+        domid: u32,
+        config: DomainConfig,
+        created: &PlatformDomainInfo,
+    ) -> Result<DomainResult> {
+        self.init(domid, config, created).await
     }
 
     pub async fn transaction(&self, domid: u32, backend_domid: u32) -> Result<XenTransaction> {

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    boot::BootDomain, elfloader::ElfImageLoader, error::Error, ImageLoader, RuntimePlatform,
-    RuntimePlatformType,
+    boot::BootDomain, elfloader::ElfImageLoader, error::Error, sys::XEN_PAGE_SHIFT,
+    ImageLoader, RuntimePlatform, RuntimePlatformType,
 };
 use log::warn;
 use uuid::Uuid;
@@ -33,6 +33,13 @@ impl PlatformDomainManager {
         let mut domain = platform.create_domain(config.options.iommu);
         domain.handle = config.uuid.into_bytes();
         domain.max_vcpus = config.resources.max_vcpus;
+        // Per-domain resource limits — cap grant table and event channel allocation.
+        // 8 grant frames = 4096 entries (guests need ~4: console, xenstore, VBD, VIF).
+        // 16 maptrack frames for dom0 grant mappings.
+        // 128 event channels (guests need ~4: console, xenstore, VBD, VIF).
+        domain.max_grant_frames = 8;
+        domain.max_maptrack_frames = 16;
+        domain.max_evtchn_port = 128;
         let domid = self.call.create_domain(domain).await?;
         Ok(domid)
     }
@@ -106,10 +113,141 @@ impl PlatformDomainManager {
         })
     }
 
+    /// Restore a domain from a checkpoint stream.
+    ///
+    /// Creates an empty domain, then loads its memory state from the checkpoint
+    /// via xc_domain_restore. The checkpoint fd must point to a raw xc migration
+    /// stream (NOT an xl-wrapped file -- the caller must strip the xl header).
+    ///
+    /// Returns PlatformDomainInfo with the new domid and store/console MFNs
+    /// from the checkpoint's shared_info page.
+    pub async fn restore(
+        &self,
+        config: PlatformRestoreConfig,
+        checkpoint_fd: i32,
+    ) -> Result<PlatformDomainInfo> {
+        let platform = config.platform.create();
+
+        // Create empty domain (same base setup as create path)
+        let mut domain = platform.create_domain(config.options.iommu);
+        domain.handle = config.uuid.into_bytes();
+        domain.max_vcpus = config.resources.max_vcpus;
+        domain.max_grant_frames = 8;
+        domain.max_maptrack_frames = 16;
+        domain.max_evtchn_port = 128;
+        let domid = self.call.create_domain(domain).await?;
+
+        // Set resources -- restore needs generous max_mem because
+        // xc_domain_restore allocates P2M table pages beyond the
+        // checkpoint's memory footprint.
+        self.call
+            .set_max_vcpus(domid, config.resources.max_vcpus)
+            .await?;
+        let restore_max_mem_kb = config.resources.max_memory_mb * 1024 * 2;
+        self.call.set_max_mem(domid, restore_max_mem_kb).await?;
+
+        // Allocate event channels for xenstore and console
+        let store_evtchn = self.call.evtchn_alloc_unbound(domid, 0).await?;
+        let console_evtchn = self.call.evtchn_alloc_unbound(domid, 0).await?;
+
+        // Load checkpoint memory into the domain
+        let result = match xencall::restore::restore_domain(
+            domid,
+            checkpoint_fd,
+            store_evtchn,
+            console_evtchn,
+        ) {
+            Ok(result) => result,
+            Err(err) => {
+                warn!("xc_domain_restore failed for domain {}: {}", domid, err);
+                let _ = self.call.destroy_domain(domid).await;
+                return Err(Error::GenericError(format!(
+                    "domain restore failed: {err}"
+                )));
+            }
+        };
+
+        // NOTE: gnttab_seed is NOT needed here. xc_domain_restore() seeds
+        // the grant table internally (xc_dom_gnttab_seed in stream_complete).
+        // Double-seeding corrupts the grant table and can crash the host.
+
+        // Reset the xenstore ring page. The checkpoint contains stale ring
+        // state (pending requests/responses from the old session). If
+        // xenstored connects via introduce_domain before the ring is clean,
+        // it processes stale data and the resulting events crash the guest
+        // kernel (NULL deref in multi_cpu_stop during PV resume).
+        //
+        // Zero the ring indices and connection field so the guest and
+        // xenstored start from a clean state after introduce_domain.
+        self.reset_xenstore_ring(domid, result.store_mfn).await?;
+
+        Ok(PlatformDomainInfo {
+            domid,
+            store_evtchn,
+            store_mfn: result.store_mfn,
+            console_evtchn,
+            console_mfn: result.console_mfn,
+        })
+    }
+
+    /// Reset the xenstore shared ring page to a clean state.
+    ///
+    /// Maps the page via privcmd, zeros the ring indices and connection
+    /// field, then unmaps. This prevents xenstored from processing stale
+    /// checkpoint data when introduce_domain is called.
+    async fn reset_xenstore_ring(&self, domid: u32, store_mfn: u64) -> Result<()> {
+        use std::sync::atomic::{fence, Ordering};
+
+        let page_size = 1u64 << XEN_PAGE_SHIFT;
+        let addr = self
+            .call
+            .mmap(0, page_size)
+            .await
+            .ok_or(Error::MmapFailed)?;
+
+        self.call
+            .mmap_batch(domid, 1, addr, vec![store_mfn])
+            .await?;
+
+        // xenstore_domain_interface layout:
+        //   char req[1024];          // offset 0
+        //   char rsp[1024];          // offset 1024
+        //   uint32_t req_cons;       // offset 2048
+        //   uint32_t req_prod;       // offset 2052
+        //   uint32_t rsp_cons;       // offset 2056
+        //   uint32_t rsp_prod;       // offset 2060
+        //   uint32_t server_features;// offset 2064
+        //   uint32_t connection;     // offset 2068
+        //   uint32_t error;          // offset 2072
+        unsafe {
+            let base = addr as *mut u8;
+            // Zero ring data buffers
+            std::ptr::write_bytes(base, 0, 2048);
+            // Zero indices + control fields (28 bytes from offset 2048)
+            std::ptr::write_bytes(base.add(2048), 0, 28);
+        }
+        fence(Ordering::Release);
+
+        unsafe {
+            libc::munmap(addr as *mut std::ffi::c_void, page_size as usize);
+        }
+        Ok(())
+    }
+
     pub async fn destroy(&self, domid: u32) -> Result<()> {
         self.call.destroy_domain(domid).await?;
         Ok(())
     }
+}
+
+/// Configuration for restoring a domain from a checkpoint.
+/// Same as PlatformDomainConfig but without kernel data.
+#[derive(Clone, Debug)]
+pub struct PlatformRestoreConfig {
+    pub uuid: Uuid,
+    pub platform: RuntimePlatformType,
+    pub resources: PlatformResourcesConfig,
+    pub options: PlatformOptions,
 }
 
 #[derive(Clone, Debug)]

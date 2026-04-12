@@ -20,6 +20,8 @@ pub enum Error {
     ValueTooLong,
     #[error("failed to join async task: {0}")]
     JoinError(JoinError),
+    #[error("domain restore failed: {0}")]
+    RestoreFailed(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
