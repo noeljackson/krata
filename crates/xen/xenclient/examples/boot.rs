@@ -6,8 +6,8 @@ use xenclient::error::Result;
 use xenclient::tx::channel::ChannelDeviceConfig;
 use xenclient::{config::DomainConfig, XenClient};
 use xenplatform::domain::{
-    KernelFormat, PlatformDomainConfig, PlatformKernelConfig, PlatformOptions,
-    PlatformResourcesConfig,
+    KernelFormat, PlatformBootResourcesConfig, PlatformDomainConfig, PlatformKernelConfig,
+    PlatformOptions, PlatformResourcesConfig,
 };
 use xenplatform::RuntimePlatformType;
 
@@ -41,6 +41,7 @@ async fn main() -> Result<()> {
             assigned_memory_mb: 512,
         },
         options: PlatformOptions { iommu: true },
+        boot_resources: PlatformBootResourcesConfig::default(),
     });
     config.name("xenclient-test");
     let mut channel = ChannelDeviceConfig::new();

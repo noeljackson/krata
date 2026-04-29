@@ -7,8 +7,8 @@ use xenclient::error::Result;
 use xenclient::tx::channel::ChannelDeviceConfig;
 use xenclient::XenClient;
 use xenplatform::domain::{
-    KernelFormat, PlatformDomainConfig, PlatformKernelConfig, PlatformOptions,
-    PlatformResourcesConfig,
+    KernelFormat, PlatformBootResourcesConfig, PlatformDomainConfig, PlatformKernelConfig,
+    PlatformOptions, PlatformResourcesConfig,
 };
 use xenplatform::elfloader::ElfImageLoader;
 use xenplatform::RuntimePlatformType;
@@ -56,6 +56,7 @@ async fn create_domain(client: &XenClient, kernel: Arc<Vec<u8>>, i: u32) -> Resu
             assigned_memory_mb: 512,
         },
         options: PlatformOptions { iommu: true },
+        boot_resources: PlatformBootResourcesConfig::default(),
     });
     config.name(format!("xenboot-{}", i));
     config.start(false);

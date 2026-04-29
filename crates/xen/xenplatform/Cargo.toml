@@ -41,6 +41,11 @@ version = "1.0"
 
 [dependencies.krata-xencall]
 version = "^0.0.24"
+path = "../xencall"
+
+[dependencies.krata-xengnt]
+version = "^0.0.24"
+path = "../xengnt"
 
 [dependencies.libc]
 version = "0.2"

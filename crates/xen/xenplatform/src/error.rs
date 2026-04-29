@@ -6,6 +6,8 @@ pub enum Error {
     Io(#[from] io::Error),
     #[error("xencall issue encountered: {0}")]
     XenCall(#[from] xencall::error::Error),
+    #[error("xengnt issue encountered: {0}")]
+    XenGrant(#[from] xengnt::error::Error),
     #[error("domain does not have a tty")]
     TtyNotFound,
     #[error("introducing the domain failed")]

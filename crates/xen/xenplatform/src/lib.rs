@@ -5,7 +5,7 @@ pub mod mem;
 pub mod sys;
 
 use boot::{BootDomain, BootImageInfo, BootImageLoader, BootSetupPlatform};
-use domain::{PlatformKernelConfig, PlatformResourcesConfig};
+use domain::{PlatformBootResourcesConfig, PlatformKernelConfig, PlatformResourcesConfig};
 use elfloader::ElfImageLoader;
 use error::Result;
 use unsupported::UnsupportedPlatform;
@@ -79,16 +79,17 @@ impl RuntimePlatform {
         image_loader: &ImageLoader,
         kernel: &PlatformKernelConfig,
         resources: &PlatformResourcesConfig,
+        boot_resources: &PlatformBootResourcesConfig,
     ) -> Result<BootDomain> {
         match self {
             RuntimePlatform::Unsupported(unsupported) => {
                 unsupported
-                    .initialize(domid, call, image_loader, kernel, resources)
+                    .initialize(domid, call, image_loader, kernel, resources, boot_resources)
                     .await
             }
             #[cfg(target_arch = "x86_64")]
             RuntimePlatform::Pv(pv) => {
-                pv.initialize(domid, call, image_loader, kernel, resources)
+                pv.initialize(domid, call, image_loader, kernel, resources, boot_resources)
                     .await
             }
         }

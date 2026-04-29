@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    boot::BootDomain, elfloader::ElfImageLoader, error::Error, sys::XEN_PAGE_SHIFT,
-    ImageLoader, RuntimePlatform, RuntimePlatformType,
+    boot::BootDomain, elfloader::ElfImageLoader, error::Error, sys::XEN_PAGE_SHIFT, ImageLoader,
+    RuntimePlatform, RuntimePlatformType,
 };
 use log::warn;
 use uuid::Uuid;
@@ -83,6 +83,7 @@ impl PlatformDomainManager {
                 &loader,
                 &config.kernel,
                 &config.resources,
+                &config.boot_resources,
             )
             .await?;
         platform.boot(domid, self.call.clone(), &mut domain).await?;
@@ -110,6 +111,7 @@ impl PlatformDomainManager {
             store_mfn: domain.store_mfn,
             console_evtchn: domain.console_evtchn,
             console_mfn: domain.console_mfn,
+            boot_resources: domain.boot_resources,
         })
     }
 
@@ -161,9 +163,7 @@ impl PlatformDomainManager {
             Err(err) => {
                 warn!("xc_domain_restore failed for domain {}: {}", domid, err);
                 let _ = self.call.destroy_domain(domid).await;
-                return Err(Error::GenericError(format!(
-                    "domain restore failed: {err}"
-                )));
+                return Err(Error::GenericError(format!("domain restore failed: {err}")));
             }
         };
 
@@ -187,6 +187,7 @@ impl PlatformDomainManager {
             store_mfn: result.store_mfn,
             console_evtchn,
             console_mfn: result.console_mfn,
+            boot_resources: PlatformBootResourcesInfo::default(),
         })
     }
 
@@ -257,6 +258,7 @@ pub struct PlatformDomainConfig {
     pub resources: PlatformResourcesConfig,
     pub kernel: PlatformKernelConfig,
     pub options: PlatformOptions,
+    pub boot_resources: PlatformBootResourcesConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -280,6 +282,26 @@ pub struct PlatformOptions {
     pub iommu: bool,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct PlatformBootResourcesConfig {
+    pub ninepfs: PlatformNinepfsBootResourcesConfig,
+}
+
+#[derive(Clone, Debug)]
+pub struct PlatformNinepfsBootResourcesConfig {
+    pub share_count: u32,
+    pub rings_per_share: u32,
+}
+
+impl Default for PlatformNinepfsBootResourcesConfig {
+    fn default() -> Self {
+        Self {
+            share_count: 0,
+            rings_per_share: 1,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum KernelFormat {
     ElfUncompressed,
@@ -293,4 +315,22 @@ pub struct PlatformDomainInfo {
     pub store_mfn: u64,
     pub console_evtchn: u32,
     pub console_mfn: u64,
+    pub boot_resources: PlatformBootResourcesInfo,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PlatformBootResourcesInfo {
+    pub ninepfs: Vec<PlatformNinepfsShareResources>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PlatformNinepfsShareResources {
+    pub rings: Vec<PlatformNinepfsRingResource>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PlatformNinepfsRingResource {
+    pub grant_index: u64,
+    pub intf_gref: u32,
+    pub evtchn: u32,
 }

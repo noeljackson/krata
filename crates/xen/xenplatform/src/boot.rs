@@ -5,6 +5,7 @@ use slice_copy::copy;
 use xencall::{sys::CreateDomain, XenCall};
 
 use crate::{
+    domain::{PlatformBootResourcesConfig, PlatformBootResourcesInfo},
     error::{Error, Result},
     mem::PhysicalPages,
     sys::XEN_PAGE_SHIFT,
@@ -38,6 +39,8 @@ pub struct BootDomain {
     pub initrd_segment: Option<DomainSegment>,
     pub console_evtchn: u32,
     pub console_mfn: u64,
+    pub boot_resources_config: PlatformBootResourcesConfig,
+    pub boot_resources: PlatformBootResourcesInfo,
     pub cmdline: String,
 }
 
@@ -226,6 +229,7 @@ pub trait BootSetupPlatform {
         image_loader: &ImageLoader,
         kernel: &PlatformKernelConfig,
         resources: &PlatformResourcesConfig,
+        boot_resources: &PlatformBootResourcesConfig,
     ) -> Result<BootDomain> {
         let target_pages = resources.assigned_memory_mb << (20 - self.page_shift());
         let total_pages = resources.max_memory_mb << (20 - self.page_shift());
@@ -247,6 +251,8 @@ pub trait BootSetupPlatform {
             initrd_segment: None,
             store_evtchn: 0,
             store_mfn: 0,
+            boot_resources_config: boot_resources.clone(),
+            boot_resources: PlatformBootResourcesInfo::default(),
             cmdline: kernel.cmdline.clone(),
         };
         match self

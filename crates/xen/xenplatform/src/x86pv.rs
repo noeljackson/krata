@@ -12,9 +12,11 @@ use xencall::sys::{
     x8664VcpuGuestContext, CreateDomain, VcpuGuestContextAny, MMUEXT_PIN_L4_TABLE,
     XEN_DOMCTL_CDF_IOMMU,
 };
+use xengnt::GrantAlloc;
 
 use crate::{
     boot::{BootDomain, BootSetupPlatform, DomainSegment},
+    domain::{PlatformNinepfsRingResource, PlatformNinepfsShareResources},
     error::{Error, Result},
     sys::{
         GrantEntry, SUPERPAGE_2MB_NR_PFNS, SUPERPAGE_2MB_SHIFT, SUPERPAGE_BATCH_SIZE,
@@ -84,6 +86,7 @@ pub struct StartInfo {
 }
 
 pub const X86_GUEST_MAGIC: &str = "xen-3.0-x86_64";
+const GNTALLOC_FLAG_WRITABLE: u16 = 1;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -500,6 +503,7 @@ impl BootSetupPlatform for X86PvPlatform {
         let page = domain.alloc_page()?;
         domain.console_evtchn = evtchn;
         domain.console_mfn = domain.phys.p2m[page.pfn as usize];
+        alloc_ninepfs_boot_resources(domain).await?;
         self.page_table_segment = self.alloc_page_tables(domain).await?;
         self.boot_stack_segment = Some(domain.alloc_page()?);
 
@@ -768,4 +772,44 @@ impl BootSetupPlatform for X86PvPlatform {
         domain.call.hypercall_init(domain.domid, mfn).await?;
         Ok(())
     }
+}
+
+async fn alloc_ninepfs_boot_resources(domain: &mut BootDomain) -> Result<()> {
+    let share_count = domain.boot_resources_config.ninepfs.share_count;
+    let rings_per_share = domain.boot_resources_config.ninepfs.rings_per_share;
+    if share_count == 0 {
+        return Ok(());
+    }
+    if rings_per_share == 0 {
+        return Err(Error::GenericError(
+            "9pfs boot resources require at least one ring per share".to_string(),
+        ));
+    }
+    let domid: u16 = domain
+        .domid
+        .try_into()
+        .map_err(|_| Error::GenericError(format!("domain id {} exceeds u16", domain.domid)))?;
+    let grant_alloc = GrantAlloc::open()?;
+    let mut shares = Vec::with_capacity(share_count as usize);
+
+    for _ in 0..share_count {
+        let mut rings = Vec::with_capacity(rings_per_share as usize);
+        for _ in 0..rings_per_share {
+            let (grant_index, refs) = grant_alloc.alloc_gref(domid, GNTALLOC_FLAG_WRITABLE, 1)?;
+            let intf_gref = refs
+                .first()
+                .copied()
+                .ok_or(Error::MemorySetupFailed("9pfs interface grant missing"))?;
+            let evtchn = domain.call.evtchn_alloc_unbound(domain.domid, 0).await?;
+            rings.push(PlatformNinepfsRingResource {
+                grant_index,
+                intf_gref,
+                evtchn,
+            });
+        }
+        shares.push(PlatformNinepfsShareResources { rings });
+    }
+
+    domain.boot_resources.ninepfs = shares;
+    Ok(())
 }

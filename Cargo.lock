@@ -261,7 +261,6 @@ checksum = "7943c866cc5cd64cbc25b2e01621d07fa8eb2a1a23160ee81ce38704e97b8ecf"
 name = "krata-xencall"
 version = "0.0.24"
 dependencies = [
- "env_logger",
  "libc",
  "log",
  "nix",
@@ -280,6 +279,7 @@ dependencies = [
  "krata-xencall",
  "krata-xenplatform",
  "krata-xenstore",
+ "libc",
  "log",
  "regex",
  "thiserror",
@@ -316,6 +316,7 @@ dependencies = [
  "elf",
  "flate2",
  "krata-xencall",
+ "krata-xengnt",
  "libc",
  "log",
  "memchr",
@@ -333,7 +334,6 @@ name = "krata-xenstore"
 version = "0.0.24"
 dependencies = [
  "byteorder",
- "env_logger",
  "libc",
  "log",
  "thiserror",
