@@ -227,6 +227,14 @@ impl VchanListener {
         self.raw.wait_connected()?;
         Ok(VchanStream { raw: self.raw })
     }
+
+    pub fn fd_for_select(&self) -> Result<RawFd> {
+        self.raw.fd_for_select()
+    }
+
+    pub fn is_open(&self) -> Result<i32> {
+        self.raw.open_state()
+    }
 }
 
 pub struct VchanStream {
