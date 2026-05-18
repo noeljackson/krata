@@ -59,6 +59,20 @@ impl DeviceIdAllocator {
         }
     }
 
+    pub fn allocate_specific(&mut self, id: u32) -> bool {
+        let Some(value) = self.states.get(id as usize) else {
+            return false;
+        };
+        if value {
+            return false;
+        }
+        self.states.set(id as usize, true);
+        if self.cursor == id {
+            self.cursor = (self.cursor + 1) % DEVICE_COUNT as u32;
+        }
+        true
+    }
+
     pub fn release(&mut self, id: u32) {
         self.states.set(id as usize, false);
     }

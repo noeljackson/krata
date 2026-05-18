@@ -74,6 +74,18 @@ impl XenTransaction {
             .map(|x| x as u64)
     }
 
+    pub async fn assign_specific_devid(&self, devid: u64) -> Result<u64> {
+        let devid = u32::try_from(devid)
+            .map_err(|_| Error::GenericError(format!("device id {devid} out of range")))?;
+        if self.devalloc.lock().await.allocate_specific(devid) {
+            Ok(devid as u64)
+        } else {
+            Err(Error::GenericError(format!(
+                "device id {devid} is unavailable"
+            )))
+        }
+    }
+
     pub async fn assign_next_blkidx(&self) -> Result<u32> {
         self.blkalloc
             .lock()
