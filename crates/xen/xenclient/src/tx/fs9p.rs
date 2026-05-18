@@ -4,6 +4,7 @@ use crate::error::{Error, Result};
 pub struct Fs9pDeviceConfig {
     backend_type: String,
     security_model: String,
+    device_id: Option<u64>,
     path: Option<String>,
     tag: Option<String>,
 }
@@ -19,6 +20,7 @@ impl Fs9pDeviceConfig {
         Self {
             backend_type: "9pfs".to_string(),
             security_model: "none".to_string(),
+            device_id: None,
             path: None,
             tag: None,
         }
@@ -31,6 +33,11 @@ impl Fs9pDeviceConfig {
 
     pub fn security_model(&mut self, security_model: impl AsRef<str>) -> &mut Self {
         self.security_model = security_model.as_ref().to_string();
+        self
+    }
+
+    pub fn device_id(&mut self, device_id: u64) -> &mut Self {
+        self.device_id = Some(device_id);
         self
     }
 
@@ -54,7 +61,10 @@ impl DeviceConfig for Fs9pDeviceConfig {
     type Result = DeviceResult;
 
     async fn add_to_transaction(&self, tx: &XenTransaction) -> Result<DeviceResult> {
-        let id = tx.assign_next_devid().await?;
+        let id = match self.device_id {
+            Some(device_id) => tx.assign_specific_devid(device_id).await?,
+            None => tx.assign_next_devid().await?,
+        };
         let path = self
             .path
             .as_ref()
