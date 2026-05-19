@@ -86,12 +86,35 @@ impl XenTransaction {
         }
     }
 
+    pub async fn assign_restored_devid(&self, devid: u64) -> Result<u64> {
+        if u32::try_from(devid).is_err() {
+            return Err(Error::GenericError(format!(
+                "device id {devid} out of range"
+            )));
+        }
+        if devid < 4096 {
+            self.assign_specific_devid(devid).await
+        } else {
+            Ok(devid)
+        }
+    }
+
     pub async fn assign_next_blkidx(&self) -> Result<u32> {
         self.blkalloc
             .lock()
             .await
             .allocate()
             .ok_or(Error::DevIdExhausted)
+    }
+
+    pub async fn assign_specific_blkidx(&self, blkidx: u32) -> Result<u32> {
+        if self.blkalloc.lock().await.allocate_specific(blkidx) {
+            Ok(blkidx)
+        } else {
+            Err(Error::GenericError(format!(
+                "block index {blkidx} is unavailable"
+            )))
+        }
     }
 
     pub async fn release_devid(&self, devid: u64) -> Result<()> {

@@ -11,6 +11,8 @@ pub struct VbdDeviceConfig {
     writable: bool,
     discard: bool,
     trusted: bool,
+    device_id: Option<u64>,
+    block_index: Option<u32>,
     block_device: Option<BlockDeviceRef>,
 }
 
@@ -29,6 +31,8 @@ impl VbdDeviceConfig {
             writable: false,
             discard: false,
             trusted: true,
+            device_id: None,
+            block_index: None,
             block_device: None,
         }
     }
@@ -63,6 +67,16 @@ impl VbdDeviceConfig {
         self
     }
 
+    pub fn device_id(&mut self, device_id: u64) -> &mut Self {
+        self.device_id = Some(device_id);
+        self
+    }
+
+    pub fn block_index(&mut self, block_index: u32) -> &mut Self {
+        self.block_index = Some(block_index);
+        self
+    }
+
     pub fn block_device(&mut self, block_device: BlockDeviceRef) -> &mut Self {
         self.block_device = Some(block_device);
         self
@@ -78,8 +92,14 @@ impl DeviceConfig for VbdDeviceConfig {
     type Result = BlockDeviceResult;
 
     async fn add_to_transaction(&self, tx: &XenTransaction) -> Result<BlockDeviceResult> {
-        let id = tx.assign_next_devid().await?;
-        let idx = tx.assign_next_blkidx().await?;
+        let id = match self.device_id {
+            Some(device_id) => tx.assign_restored_devid(device_id).await?,
+            None => tx.assign_next_devid().await?,
+        };
+        let idx = match self.block_index {
+            Some(block_index) => tx.assign_specific_blkidx(block_index).await?,
+            None => tx.assign_next_blkidx().await?,
+        };
         let vdev = vbd_blkidx_to_disk_name(idx)?;
         let block_device = self
             .block_device
